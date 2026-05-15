@@ -1,5 +1,8 @@
 using UnlockFps.Logging;
 using UnlockFps.Utils;
+using System.IO;
+using System;
+
 namespace UnlockFps;
 
 internal static class FpsPatterns
@@ -11,14 +14,12 @@ internal static class FpsPatterns
 
     public static unsafe nint ProvideAddress(NativeModuleInfo mainModule)
     {
-        var mappedMainModule = NativeMethods.LoadLibraryEx(mainModule.FilePath, DontResolveDllReferences);
-        if (mappedMainModule == IntPtr.Zero)
-        {
-            throw new InvalidOperationException($"Failed to map main module image: {mainModule.FilePath}");
-        }
+        var imageBytes = MapPEFile(mainModule.FilePath);
 
-        try
+        fixed (byte* pImage = imageBytes)
         {
+            nint mappedMainModule = (nint)pImage;
+
             if (!ProcessUtils.TryGetSection(mappedMainModule, Il2CppSectionName, out var il2cppSection))
             {
                 throw new InvalidOperationException(
@@ -43,12 +44,65 @@ internal static class FpsPatterns
                 return (nint)remoteFpsAddress;
             }
         }
-        finally
-        {
-            NativeMethods.FreeLibrary(mappedMainModule);
-        }
 
         throw new InvalidOperationException("Unrecognized FPS pattern.");
+    }
+
+    private static byte[] MapPEFile(string filePath)
+    {
+        using var fs = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+        using var reader = new BinaryReader(fs);
+
+        fs.Position = 0x3C;
+        var peOffset = reader.ReadInt32();
+
+        fs.Position = peOffset;
+        var signature = reader.ReadUInt32();
+        if (signature != 0x00004550) throw new InvalidOperationException("Invalid PE signature");
+
+        var machine = reader.ReadUInt16();
+        var numberOfSections = reader.ReadUInt16();
+        fs.Position += 12;
+        var sizeOfOptionalHeader = reader.ReadUInt16();
+        fs.Position += 2;
+
+        var optionalHeaderOffset = fs.Position;
+        fs.Position = optionalHeaderOffset + 56;
+        var sizeOfImage = reader.ReadUInt32();
+        var sizeOfHeaders = reader.ReadUInt32();
+
+        var imageBytes = new byte[sizeOfImage];
+
+        fs.Position = 0;
+        var bytesToRead = (int)Math.Min(sizeOfHeaders, fs.Length);
+        if (bytesToRead > 0)
+        {
+            var headerBytes = reader.ReadBytes(bytesToRead);
+            Array.Copy(headerBytes, imageBytes, headerBytes.Length);
+        }
+
+        var sectionHeadersOffset = optionalHeaderOffset + sizeOfOptionalHeader;
+
+        for (int i = 0; i < numberOfSections; i++)
+        {
+            fs.Position = sectionHeadersOffset + i * 40;
+            var nameBytes = reader.ReadBytes(8);
+            var virtualSize = reader.ReadUInt32();
+            var virtualAddress = reader.ReadUInt32();
+            var sizeOfRawData = reader.ReadUInt32();
+            var pointerToRawData = reader.ReadUInt32();
+
+            var sizeToRead = Math.Min(virtualSize == 0 ? sizeOfRawData : virtualSize, sizeOfRawData);
+            if (sizeToRead > 0 && pointerToRawData > 0 && pointerToRawData < fs.Length)
+            {
+                sizeToRead = Math.Min(sizeToRead, (uint)(fs.Length - pointerToRawData));
+                fs.Position = pointerToRawData;
+                var sectionData = reader.ReadBytes((int)sizeToRead);
+                Array.Copy(sectionData, 0, imageBytes, (int)virtualAddress, sectionData.Length);
+            }
+        }
+
+        return imageBytes;
     }
 
     private static unsafe byte* TryResolveLocalFpsAddress(byte* candidate)
