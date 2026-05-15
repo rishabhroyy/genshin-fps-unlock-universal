@@ -45,3 +45,4 @@ TerminateProcess
 VirtualAllocEx
 VirtualFreeEx
 WaitForSingleObject
+AttachConsole

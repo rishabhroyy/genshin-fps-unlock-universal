@@ -7,6 +7,14 @@ namespace UnlockFps;
 
 internal sealed class Program
 {
+    [System.Runtime.InteropServices.DllImport("kernel32.dll")]
+    private static extern IntPtr GetConsoleWindow();
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+
+    private const int SW_HIDE = 0;
+
     // Initialization code. Don't use any Avalonia, third-party APIs or any
     // SynchronizationContext-reliant code before AppMain is called: things aren't initialized
     // yet and stuff might break.
@@ -45,6 +53,9 @@ internal sealed class Program
                 return;
             }
 
+            // Hide the console window if running the visual UI
+            ShowWindow(GetConsoleWindow(), SW_HIDE);
+
             BuildAvaloniaApp()
                 .StartWithClassicDesktopLifetime(args);
         }
@@ -60,7 +71,7 @@ internal sealed class Program
         var gameService = new UnlockFps.Services.GameInstanceService(configService);
         gameService.Start();
         
-        Console.WriteLine("Waiting for game... Press Ctrl+C to exit.");
+        Console.WriteLine("Waiting for game...");
         
         Thread.Sleep(Timeout.Infinite);
     }

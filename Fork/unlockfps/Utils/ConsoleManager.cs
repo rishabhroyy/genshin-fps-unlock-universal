@@ -52,6 +52,31 @@ internal static class ConsoleManager
         NativeMethods.DeleteMenu(hMenu, SC_CLOSE, MF_BYCOMMAND);
     }
 
+    [System.Runtime.InteropServices.DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool AttachConsole(uint dwProcessId);
+
+    /// <summary>
+    /// Try to attach to the parent console. If failed, allocates a new console.
+    /// </summary>
+    public static void AttachToParent()
+    {
+        if (HasConsole) return;
+        
+        // 0xFFFFFFFF is ATTACH_PARENT_PROCESS
+        if (AttachConsole(0xFFFFFFFF))
+        {
+            InvalidateOutAndError();
+            
+            Console.ForegroundColor = ConsoleColor.Cyan;
+            Console.WriteLine("\n[Genshin FPS Unlocker] Attached to terminal. Press Ctrl+C to exit.");
+            Console.ResetColor();
+        }
+        else
+        {
+            Show();
+        }
+    }
+
     public static void BindExitAction(Action? exitAction)
     {
         if (exitAction == null || _handler != null) return;
