@@ -1,4 +1,6 @@
-﻿using Avalonia;
+using System;
+using System.Threading;
+using Avalonia;
 using UnlockFps.Utils;
 
 namespace UnlockFps;
@@ -11,12 +13,56 @@ internal sealed class Program
     [STAThread]
     public static void Main(string[] args)
     {
+        int? headlessFps = null;
+        for (int i = 0; i < args.Length; i++)
+        {
+            if ((args[i] == "--fps" || args[i] == "-fps") && i + 1 < args.Length)
+            {
+                if (int.TryParse(args[i + 1], out var fps))
+                {
+                    headlessFps = fps;
+                }
+            }
+            else if (args.Length == 1 && int.TryParse(args[0], out var fpsOnly))
+            {
+                headlessFps = fpsOnly;
+            }
+        }
+
         using (new Mutex(true, @"GenshinFPSUnlocker", out var createdNew))
         {
             DuplicatedInstance = !createdNew;
+
+            if (headlessFps.HasValue)
+            {
+                if (DuplicatedInstance)
+                {
+                    Console.WriteLine("Another instance of the unlocker is already running.");
+                    return;
+                }
+
+                RunHeadless(headlessFps.Value);
+                return;
+            }
+
             BuildAvaloniaApp()
                 .StartWithClassicDesktopLifetime(args);
         }
+    }
+
+    private static void RunHeadless(int fps)
+    {
+        Console.WriteLine($"Starting in headless mode with FPS limit: {fps}");
+        
+        var configService = new UnlockFps.Services.ConfigService();
+        configService.Config.FpsTarget = fps;
+        
+        var gameService = new UnlockFps.Services.GameInstanceService(configService);
+        gameService.Start();
+        
+        Console.WriteLine("Waiting for game... Press Ctrl+C to exit.");
+        
+        Thread.Sleep(Timeout.Infinite);
     }
 
     public static bool DuplicatedInstance { get; private set; }
