@@ -156,22 +156,23 @@ internal class ProcessUtils
         return PatternScanAll(sectionBytes, signature, section.Address);
     }
 
-    public static bool TryGetSection(nint module, string sectionName, out ModuleSectionInfo section)
+    public static unsafe bool TryGetSection(nint module, string sectionName, out ModuleSectionInfo section)
     {
-        var dosHeader = Marshal.PtrToStructure<IMAGE_DOS_HEADER>(module);
-        var ntHeaderAddress = module + dosHeader.e_lfanew;
-        var ntHeader = Marshal.PtrToStructure<IMAGE_NT_HEADERS>(ntHeaderAddress);
-        var sectionHeaderAddress = ntHeaderAddress + Marshal.SizeOf<IMAGE_NT_HEADERS>();
-        var sectionHeaderSize = Marshal.SizeOf<IMAGE_SECTION_HEADER>();
+        var dosHeader = (IMAGE_DOS_HEADER*)module;
+        var ntHeaderAddress = (byte*)module + dosHeader->e_lfanew;
+        var ntHeader = (IMAGE_NT_HEADERS*)ntHeaderAddress;
+        
+        var sectionHeaderAddress = ntHeaderAddress + 4 + sizeof(IMAGE_FILE_HEADER) + ntHeader->FileHeader.SizeOfOptionalHeader;
+        var sectionHeaderSize = sizeof(IMAGE_SECTION_HEADER);
 
-        for (var i = 0; i < ntHeader.FileHeader.NumberOfSections; i++)
+        for (var i = 0; i < ntHeader->FileHeader.NumberOfSections; i++)
         {
-            var currentSection = Marshal.PtrToStructure<IMAGE_SECTION_HEADER>(sectionHeaderAddress + i * sectionHeaderSize);
-            if (!sectionName.Equals(currentSection.GetName(), StringComparison.Ordinal))
+            var currentSection = (IMAGE_SECTION_HEADER*)(sectionHeaderAddress + i * sectionHeaderSize);
+            if (!sectionName.Equals(currentSection->GetName(), StringComparison.Ordinal))
                 continue;
 
-            var size = checked((int)(currentSection.VirtualSize == 0 ? currentSection.SizeOfRawData : currentSection.VirtualSize));
-            section = new ModuleSectionInfo(module + (int)currentSection.VirtualAddress, size);
+            var size = checked((int)(currentSection->VirtualSize == 0 ? currentSection->SizeOfRawData : currentSection->VirtualSize));
+            section = new ModuleSectionInfo(module + (int)currentSection->VirtualAddress, size);
             return true;
         }
 

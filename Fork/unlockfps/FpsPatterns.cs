@@ -5,13 +5,13 @@ namespace UnlockFps;
 internal static class FpsPatterns
 {
     private static readonly ILogger Logger = LogManager.GetLogger(nameof(FpsPatterns));
-    private const uint LoadLibraryAsImageResource = 0x20;
+    private const uint DontResolveDllReferences = 0x01;
     private const string Il2CppSectionName = "il2cpp";
     private const string FpsPattern = "B9 3C 00 00 00 E8";
 
     public static unsafe nint ProvideAddress(NativeModuleInfo mainModule)
     {
-        var mappedMainModule = NativeMethods.LoadLibraryEx(mainModule.FilePath, LoadLibraryAsImageResource);
+        var mappedMainModule = NativeMethods.LoadLibraryEx(mainModule.FilePath, DontResolveDllReferences);
         if (mappedMainModule == IntPtr.Zero)
         {
             throw new InvalidOperationException($"Failed to map main module image: {mainModule.FilePath}");
